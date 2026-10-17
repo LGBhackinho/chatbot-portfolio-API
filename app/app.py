@@ -34,20 +34,29 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # 3. CORS
 # Liste des origines autorisées (Dev + Prod GitHub Pages)
+# Liste des origines autorisées (SANS slash à la fin)
 origins = [
-    "http://localhost",
-    "http://127.0.0.1",
-    "http://localhost:5500",  # Si tu utilises Live Server VS Code
-    "https://lgbhackinho.github.io",  # Ton domaine GitHub Pages
+    "https://lgbhackinho.github.io",  # Ton portfolio GitHub Pages
+    "http://192.168.1.22:8080",
+    "http://localhost:5500",           # VS Code Live Server (port par défaut)
+    "http://127.0.0.1:5500",
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
 ]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    # allow_origins=["*"],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],  # Autorise toutes les méthodes (GET, POST, OPTIONS, etc.)
     allow_headers=["*"],  # Autorise tous les en-têtes
 )
+
+# Route de preflight OPTIONS
+@app.options("/{full_path:path}")
+async def options_handler(full_path: str):
+    return {}
 
 # 4. Définition du Prompt Système
 SYSTEM_PROMPT = """
@@ -63,7 +72,7 @@ RÈGLES DE RÉPONSE :
 EXEMPLE SALAIRE ET PRÉTENTIONS :
 Question: Quelles sont vos prétentions salariales ? (ou "son salaire", "prétentions")
 Réponse:
-Les prétentions salariales de Ruddy se situent entre 30 000 € et 34 000 € brut annuel, selon le poste, les responsabilités et le mode de travail (télétravail/présentiel). Mais si vous lui proposez plus, il dira pas non ;)
+Les prétentions salariales de Ruddy se situent entre 30 000 € et 34 000 € brut annuel, selon le poste, les responsabilités et le mode de travail (télétravail/présentiel). Mais si vous lui proposez plus, il dira pas non ;). la touche d'humour est importante car j'aime l humour masi tu le dit pas masi laisse le smiley.
 
 INFORMATIONS À CONNAÎTRE SUR RUDDY :
 - Prétentions salariales : Entre 30 000 € et 34 000 € brut par an.
