@@ -33,12 +33,20 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # 3. CORS
+# Liste des origines autorisées (Dev + Prod GitHub Pages)
+origins = [
+    "http://localhost",
+    "http://127.0.0.1",
+    "http://localhost:5500",  # Si tu utilises Live Server VS Code
+    "https://lgbhackinho.github.io",  # Ton domaine GitHub Pages
+]
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["*"],  # Autorise toutes les méthodes (GET, POST, OPTIONS, etc.)
+    allow_headers=["*"],  # Autorise tous les en-têtes
 )
 
 # 4. Définition du Prompt Système

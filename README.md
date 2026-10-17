@@ -78,7 +78,7 @@ Le service écoutera par défaut sur le port configuré (ex: `8001` en externe).
 * **Réponse (JSON) :**
   ```json
   {
-    "response": "Les prétentions salariales de Ruddy se situent entre 30 000 € et 34 000 € brut annuel..."
+    "response": "Les prétentions salariales de TOTO se situent entre 30 000 € et 34 000 € brut annuel..."
   }
   ```
 
