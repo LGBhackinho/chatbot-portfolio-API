@@ -1,0 +1,15 @@
+# Secrets et clés d'API (TRÈS IMPORTANT)
+albert_api_key
+.env
+secrets/
+*.key
+
+# Environnement virtuel Python
+venv/
+env/
+__pycache__/
+*.pyc
+
+# Docker et logs
+*.log
+.docker/
