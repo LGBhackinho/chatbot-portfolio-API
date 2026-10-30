@@ -5,6 +5,8 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    volumes:
+      - ./app:/app/app
     # On lie le port uniquement au localhost du NUC pour que le reverse proxy seul y accède
     ports:
       - "192.168.1.22:8001:8000"

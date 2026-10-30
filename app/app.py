@@ -4,32 +4,50 @@ import re
 from fastapi import FastAPI, Request, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-from openai import OpenAI
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
-# 1. Chargement de la clé API depuis le secret monté
-SECRET_PATH = "/run/secrets/albert_api_key"
-if os.path.exists(SECRET_PATH):
-    with open(SECRET_PATH, "r") as f:
-        api_key = f.read().strip()
-else:
-    api_key = os.getenv("ALBERT_API_KEY", "")
+# Import des clients selon les besoins
+from openai import OpenAI
+import google.generativeai as genai
 
-if not api_key:
-    raise RuntimeError("Clé API Albert introuvable !")
+# 1. Choix du fournisseur d'IA (albert ou gemini)
+AI_PROVIDER = os.getenv("AI_PROVIDER", "albert").lower()
+
+client_openai = None
+SELECTED_MODEL = ""
+
+if AI_PROVIDER == "gemini":
+    # --- CONFIGURATION GEMINI ---
+    gemini_api_key = os.getenv("GEMINI_API_KEY", "")
+    if not gemini_api_key:
+        raise RuntimeError("Clé API Gemini introuvable !")
+    
+    genai.configure(api_key=gemini_api_key)
+    SELECTED_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+
+else:
+    # --- CONFIGURATION ALBERT (OpenAI-compatible) ---
+    SECRET_PATH = "/run/secrets/albert_api_key"
+    if os.path.exists(SECRET_PATH):
+        with open(SECRET_PATH, "r") as f:
+            api_key = f.read().strip()
+    else:
+        api_key = os.getenv("ALBERT_API_KEY", "")
+
+    if not api_key:
+        raise RuntimeError("Clé API Albert introuvable !")
+
+    client_openai = OpenAI(
+        base_url="https://albert.api.etalab.gouv.fr/v1",
+        api_key=api_key,
+    )
+    SELECTED_MODEL = os.getenv("ALBERT_MODEL", "gpt-oss-120b")
 
 # Configuration Telegram
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
-
-client = OpenAI(
-    base_url="https://albert.api.etalab.gouv.fr/v1",
-    api_key=api_key,
-)
-
-SELECTED_MODEL = "gpt-oss-120b"
 
 limiter = Limiter(key_func=get_remote_address)
 app = FastAPI()
@@ -108,7 +126,7 @@ async def send_telegram_notification(user_message: str, bot_reply: str):
     text = (
         f"🚨 *Nouveau message sur ton portfolio !*\n\n"
         f"👤 *Visiteur :* {user_message}\n"
-        f"🤖 *IA :* {bot_reply}"
+        f"🤖 *IA ({AI_PROVIDER}) :* {bot_reply}"
     )
     payload = {
         "chat_id": TELEGRAM_CHAT_ID,
@@ -126,9 +144,7 @@ async def send_telegram_notification(user_message: str, bot_reply: str):
 
 def clean_ai_response(text: str) -> str:
     """Supprime les blocs de réflexion interne <think>...</think> si le modèle les génère"""
-    # Enlève tout ce qui est entre <think> et </think>
     cleaned = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
-    # Supprime aussi les phrases de réflexion isolées
     cleaned = re.sub(r'Réflexion en cours\.\.\.', '', cleaned)
     return cleaned.strip()
 
@@ -136,23 +152,42 @@ def clean_ai_response(text: str) -> str:
 @limiter.limit("10/minute")
 async def chat_endpoint(request: Request, query: ChatQuery, background_tasks: BackgroundTasks):
     try:
-        response = client.chat.completions.create(
-            model=SELECTED_MODEL,
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": query.message}
-            ],
-            max_tokens=600,  # <-- Augmenté de 200 à 600 pour éviter les réponses coupées
-            temperature=0.4
-        )
+        raw_reply = ""
+
+        if AI_PROVIDER == "gemini":
+            # Appel de l'API Gemini officiel avec system_instruction
+            model = genai.GenerativeModel(
+                model_name=SELECTED_MODEL,
+                system_instruction=SYSTEM_PROMPT
+            )
+            response = model.generate_content(
+                query.message,
+                generation_config={
+                    "max_output_tokens": 600,
+                    "temperature": 0.4
+                }
+            )
+            raw_reply = response.text
+        else:
+            # Appel de l'API Albert (OpenAI compatible d'origine)
+            response = client_openai.chat.completions.create(
+                model=SELECTED_MODEL,
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": query.message}
+                ],
+                max_tokens=600,
+                temperature=0.4
+            )
+            raw_reply = response.choices[0].message.content
         
-        raw_reply = response.choices[0].message.content
         bot_reply = clean_ai_response(raw_reply)
 
         # Notification Telegram avec la réponse nettoyée
         background_tasks.add_task(send_telegram_notification, query.message, bot_reply)
 
         return {"response": bot_reply}
+        
     except Exception as e:
         print(f"--- ERREUR CHAT EXACTE : {e} ---", flush=True)
         raise HTTPException(status_code=500, detail=str(e))
